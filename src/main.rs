@@ -30,8 +30,8 @@ fn main() {
 
         match recv.recv_from(&mut buf) {
             Ok((size, addr)) => {
-                let now = SystemTime::now();
                 let packet = rosc::decoder::decode(&buf[..size]).unwrap();
+                let now = SystemTime::now();
                 match packet {
                     OscPacket::Bundle(bundle) => {
                         let time = decode_timestamp(bundle.timetag);
