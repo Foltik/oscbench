@@ -6,10 +6,10 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let target: SocketAddr = format!("{}:8888", args[1]).parse().unwrap();
 
-    let send = UdpSocket::bind("127.0.0.1:8889").unwrap();
+    let send = UdpSocket::bind("0.0.0.0:8889").unwrap();
     send.set_nonblocking(true).unwrap();
 
-    let recv = UdpSocket::bind("127.0.0.1:8888").unwrap();
+    let recv = UdpSocket::bind("0.0.0.0:8888").unwrap();
     recv.set_nonblocking(true).unwrap();
 
     let mut last = Instant::now();
