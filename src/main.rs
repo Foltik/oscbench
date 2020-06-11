@@ -1,49 +1,62 @@
 use rosc::{OscMessage, OscPacket, OscBundle};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
+use std::thread;
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let target: SocketAddr = format!("{}:8888", args[1]).parse().unwrap();
+    thread::spawn(move || {
+        let args: Vec<String> = std::env::args().collect();
+        let target: SocketAddr = format!("{}:8888", args[1]).parse().unwrap();
 
-    let send = UdpSocket::bind("0.0.0.0:8889").unwrap();
-    send.set_nonblocking(true).unwrap();
+        let sock = UdpSocket::bind("0.0.0.0:8889").unwrap();
+        sock.set_nonblocking(true).unwrap();
 
-    let recv = UdpSocket::bind("0.0.0.0:8888").unwrap();
-    recv.set_nonblocking(true).unwrap();
+        let mut last = Instant::now();
 
-    let mut last = Instant::now();
-    let mut buf = [0; rosc::decoder::MTU];
+        loop {
+            if last.elapsed() > Duration::from_millis(500) {
+                let msg = rosc::encoder::encode(&OscPacket::Bundle(OscBundle {
+                    timetag: encode_timestamp(),
+                    content: vec![OscPacket::Message(OscMessage {
+                        addr: "/time".to_string(),
+                        args: vec![],
+                    })],
+                })).unwrap();
 
-    loop {
-        if last.elapsed() > Duration::from_millis(500) {
-            last = Instant::now();
-            let msg = rosc::encoder::encode(&OscPacket::Bundle(OscBundle {
-                timetag: encode_timestamp(),
-                content: vec![OscPacket::Message(OscMessage {
-                    addr: "/time".to_string(),
-                    args: vec![],
-                })],
-            })).unwrap();
-            send.send_to(&msg, target).unwrap();
-        }
+                sock.send_to(&msg, target).unwrap();
 
-        match recv.recv_from(&mut buf) {
-            Ok((size, addr)) => {
-                let packet = rosc::decoder::decode(&buf[..size]).unwrap();
-                let now = SystemTime::now();
-                match packet {
-                    OscPacket::Bundle(bundle) => {
-                        let time = decode_timestamp(bundle.timetag);
-                        let duration = now.duration_since(time).unwrap();
-                        println!("{}: {:?}", addr, duration);
-                    },
-                    _ => {}
-                }
+                last = Instant::now();
             }
-            _ => {}
         }
-    }
+    });
+
+    thread::spawn(move || {
+        let sock = UdpSocket::bind("0.0.0.0:8888").unwrap();
+        sock.set_nonblocking(true).unwrap();
+
+        let mut buf = [0; rosc::decoder::MTU];
+
+        loop {
+            match sock.recv_from(&mut buf) {
+                Ok((size, addr)) => {
+                    let packet = rosc::decoder::decode(&buf[..size]).unwrap();
+                    let now = SystemTime::now();
+                    match packet {
+                        OscPacket::Bundle(bundle) => {
+                            let time = decode_timestamp(bundle.timetag);
+                            let duration = now.duration_since(time).unwrap();
+                            println!("{}: {:?}", addr, duration);
+                        },
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+
+    });
+
+    thread::park();
 }
 
 fn encode_timestamp() -> (u32, u32) {
